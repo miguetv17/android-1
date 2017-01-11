@@ -4,6 +4,8 @@
  */
 package com.mattermost.mattermost;
 
+import android.*;
+import android.Manifest;
 import android.app.ActionBar;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -12,10 +14,14 @@ import android.app.DownloadManager.Request;
 import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Base64;
 import android.util.Log;
@@ -53,6 +59,9 @@ public class WebViewActivity extends AppActivity {
     protected WebView webView;
     private boolean isProgressVisible = false;
 
+
+    private static final int ACCESS_CAMERA_PERMISSION_CODE = 100;
+
     protected void initProgressBar(int id) {
         this.progressBar = (ProgressBar) this.findViewById(id);
         this.progressBar.setMax(100);
@@ -76,7 +85,7 @@ public class WebViewActivity extends AppActivity {
         settings.setMediaPlaybackRequiresUserGesture(false);
 
         final File dir = this.getExternalCacheDir();
-        settings.setAppCacheMaxSize(1024*1024*20);
+        settings.setAppCacheMaxSize(1024 * 1024 * 20);
         settings.setAppCachePath(dir.getAbsolutePath());
         settings.setAllowFileAccess(true);
         settings.setAppCacheEnabled(true);
@@ -126,11 +135,11 @@ public class WebViewActivity extends AppActivity {
     private DownloadListener getDownloadListener() {
         return new DownloadListener() {
             public void onDownloadStart(
-                String url,
-                String userAgent,
-                String contentDisposition,
-                String mimetype,
-                long contentLength
+                    String url,
+                    String userAgent,
+                    String contentDisposition,
+                    String mimetype,
+                    long contentLength
             ) {
                 Uri uri = Uri.parse(url);
                 Request request = new Request(uri);
@@ -145,7 +154,7 @@ public class WebViewActivity extends AppActivity {
 
                 DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                 dm.enqueue(request);
-           }
+            }
         };
     }
 
@@ -516,6 +525,10 @@ public class WebViewActivity extends AppActivity {
         }
 
         private Intent createCameraIntent() {
+            if (!appHasCameraPermission()) {
+                requestCameraPermission();
+                return null;
+            }
             Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
             File externalDataDir = Environment.getExternalStoragePublicDirectory(
                     Environment.DIRECTORY_DCIM);
@@ -535,6 +548,45 @@ public class WebViewActivity extends AppActivity {
 
         private Intent createSoundRecorderIntent() {
             return new Intent(MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+        }
+    }
+
+    private boolean appHasCameraPermission() {
+        String[] permissions = new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE};
+        for (String permission : permissions) {
+            if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void requestCameraPermission() {
+        ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE},
+                ACCESS_CAMERA_PERMISSION_CODE);
+
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String permissions[], @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case ACCESS_CAMERA_PERMISSION_CODE: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startActivity(mUploadHandler.createDefaultOpenableIntent());
+
+                } else {
+                    Toast.makeText(this, "Ups!", Toast.LENGTH_SHORT).show();
+
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                return;
+            }
+
         }
     }
 }
