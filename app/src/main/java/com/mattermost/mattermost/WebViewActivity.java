@@ -4,9 +4,7 @@
  */
 package com.mattermost.mattermost;
 
-import android.*;
 import android.Manifest;
-import android.app.ActionBar;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
@@ -16,38 +14,28 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AppCompatActivity;
-import android.util.Base64;
 import android.util.Log;
-import android.util.Xml;
 import android.view.View;
-import android.view.Window;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 import android.os.Build;
 
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URL;
 
 public class WebViewActivity extends AppActivity {
@@ -60,7 +48,12 @@ public class WebViewActivity extends AppActivity {
     private boolean isProgressVisible = false;
 
 
-    private static final int ACCESS_CAMERA_PERMISSION_CODE = 100;
+    private ValueCallback<Uri> uploadMessage;
+    private String accType;
+    private String capt;
+
+
+    private static final int PERMISSION_CODE = 100;
 
     protected void initProgressBar(int id) {
         this.progressBar = (ProgressBar) this.findViewById(id);
@@ -427,6 +420,12 @@ public class WebViewActivity extends AppActivity {
             if (mUploadMessage != null) {
                 return;
             }
+
+            if (!appHasNeededPermission()) {
+                requestAppPermission(uploadMsg, acceptType, capture);
+                return;
+            }
+
             mUploadMessage = uploadMsg;
             String params[] = acceptType.split(";");
             String mimeType = params[0];
@@ -525,10 +524,6 @@ public class WebViewActivity extends AppActivity {
         }
 
         private Intent createCameraIntent() {
-            if (!appHasCameraPermission()) {
-                requestCameraPermission();
-                return null;
-            }
             Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
             File externalDataDir = Environment.getExternalStoragePublicDirectory(
                     Environment.DIRECTORY_DCIM);
@@ -551,8 +546,8 @@ public class WebViewActivity extends AppActivity {
         }
     }
 
-    private boolean appHasCameraPermission() {
-        String[] permissions = new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE};
+    private boolean appHasNeededPermission() {
+        String[] permissions = new String[]{Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
         for (String permission : permissions) {
             if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 return false;
@@ -561,10 +556,13 @@ public class WebViewActivity extends AppActivity {
         return true;
     }
 
-    private void requestCameraPermission() {
+    private void requestAppPermission(ValueCallback<Uri> uploadMsg, String acceptType, String capture) {
+        uploadMessage = uploadMsg;
+        accType = acceptType;
+        capt = capture;
         ActivityCompat.requestPermissions(this,
-                new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE},
-                ACCESS_CAMERA_PERMISSION_CODE);
+                new String[]{Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                PERMISSION_CODE);
 
     }
 
@@ -572,19 +570,15 @@ public class WebViewActivity extends AppActivity {
     public void onRequestPermissionsResult(int requestCode,
                                            @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
-            case ACCESS_CAMERA_PERMISSION_CODE: {
+            case PERMISSION_CODE: {
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    startActivity(mUploadHandler.createDefaultOpenableIntent());
-
+                    mUploadHandler.openFileChooser(uploadMessage, accType, capt);
                 } else {
-                    Toast.makeText(this, "Ups!", Toast.LENGTH_SHORT).show();
-
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
+                    new AlertDialog.Builder(this).setMessage("Se requiere permisos para ejecutar la acción").create().show();
                 }
-                return;
+                break;
             }
 
         }
