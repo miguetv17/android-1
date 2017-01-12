@@ -571,9 +571,10 @@ public class WebViewActivity extends AppActivity {
                                            @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
             case PERMISSION_CODE: {
-                // If request is cancelled, the result arrays are empty.
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                boolean cameraPermission = grantResults[1] == PackageManager.PERMISSION_GRANTED;
+                boolean readExternalFile = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+
+                if (cameraPermission && readExternalFile) {
                     mUploadHandler.openFileChooser(uploadMessage, accType, capt);
                 } else {
                     new AlertDialog.Builder(this).setMessage("Se requiere permisos para ejecutar la acción").create().show();
