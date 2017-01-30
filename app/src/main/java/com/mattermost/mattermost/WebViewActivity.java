@@ -14,6 +14,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
@@ -31,7 +32,6 @@ import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
-import android.os.Build;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -47,13 +47,11 @@ public class WebViewActivity extends AppActivity {
     protected WebView webView;
     private boolean isProgressVisible = false;
 
+    private static final int REQUEST_WRITE_STORAGE_PERMISSION = 3;
 
-    private ValueCallback<Uri> uploadMessage;
-    private String accType;
-    private String capt;
+    private ValueCallback<Uri> vc;
 
-
-    private static final int PERMISSION_CODE = 100;
+    private String acceptType;
 
     protected void initProgressBar(int id) {
         this.progressBar = (ProgressBar) this.findViewById(id);
@@ -323,35 +321,54 @@ public class WebViewActivity extends AppActivity {
                 WebView webView, ValueCallback<Uri[]> filePathCallback,
                 FileChooserParams fileChooserParams) {
 
-            String acceptTypes[] = fileChooserParams.getAcceptTypes();
+            if (checkPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                String acceptTypes[] = fileChooserParams.getAcceptTypes();
 
-            String acceptType = "";
-            for (int i = 0; i < acceptTypes.length; ++i) {
-                if (acceptTypes[i] != null && acceptTypes[i].length() != 0)
-                    acceptType += acceptTypes[i] + ";";
-            }
-            if (acceptType.length() == 0)
-                acceptType = "*/*";
-
-            final ValueCallback<Uri[]> finalFilePathCallback = filePathCallback;
-
-            ValueCallback<Uri> vc = new ValueCallback<Uri>() {
-
-                @Override
-                public void onReceiveValue(Uri value) {
-
-                    Uri[] result;
-                    if (value != null)
-                        result = new Uri[]{value};
-                    else
-                        result = null;
-
-                    finalFilePathCallback.onReceiveValue(result);
-
+                acceptType = "";
+                for (int i = 0; i < acceptTypes.length; ++i) {
+                    if (acceptTypes[i] != null && acceptTypes[i].length() != 0)
+                        acceptType += acceptTypes[i] + ";";
                 }
-            };
+                if (acceptType.length() == 0)
+                    acceptType = "*/*";
 
-            openFileChooser(vc, acceptType, "filesystem");
+                final ValueCallback<Uri[]> finalFilePathCallback = filePathCallback;
+
+                vc = new ValueCallback<Uri>() {
+
+                    @Override
+                    public void onReceiveValue(Uri value) {
+
+                        Uri[] result;
+                        if (value != null)
+                            result = new Uri[]{value};
+                        else
+                            result = null;
+
+                        finalFilePathCallback.onReceiveValue(result);
+
+                    }
+                };
+
+                openFileChooser(vc, acceptType, "filesystem");
+
+            } else {
+                if (ActivityCompat.shouldShowRequestPermissionRationale(WebViewActivity.this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                    new AlertDialog.Builder(WebViewActivity.this)
+                            .setTitle(R.string.permission_request_settings)
+                            .setMessage(R.string.permission_request_settings_message)
+                            .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialogInterface, int i) {
+                                    Toast.makeText(WebViewActivity.this, "Test", Toast.LENGTH_SHORT).show();
+                                }
+                            }).create().show();
+                } else {
+                    //
+                    requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_STORAGE_PERMISSION);
+                }
+            }
+
 
             return true;
         }
@@ -362,6 +379,14 @@ public class WebViewActivity extends AppActivity {
 
         Activity getActivity() {
             return WebViewActivity.this;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            mUploadHandler = new UploadHandler(new Controller());
+            mUploadHandler.openFileChooser(vc, acceptType, "filesystem");
         }
     }
 
@@ -420,12 +445,6 @@ public class WebViewActivity extends AppActivity {
             if (mUploadMessage != null) {
                 return;
             }
-
-            if (!appHasNeededPermission()) {
-                requestAppPermission(uploadMsg, acceptType, capture);
-                return;
-            }
-
             mUploadMessage = uploadMsg;
             String params[] = acceptType.split(";");
             String mimeType = params[0];
@@ -546,42 +565,8 @@ public class WebViewActivity extends AppActivity {
         }
     }
 
-    private boolean appHasNeededPermission() {
-        String[] permissions = new String[]{Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
-        for (String permission : permissions) {
-            if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void requestAppPermission(ValueCallback<Uri> uploadMsg, String acceptType, String capture) {
-        uploadMessage = uploadMsg;
-        accType = acceptType;
-        capt = capture;
-        ActivityCompat.requestPermissions(this,
-                new String[]{Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                PERMISSION_CODE);
-
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String permissions[], @NonNull int[] grantResults) {
-        switch (requestCode) {
-            case PERMISSION_CODE: {
-                boolean cameraPermission = grantResults[1] == PackageManager.PERMISSION_GRANTED;
-                boolean readExternalFile = grantResults[0] == PackageManager.PERMISSION_GRANTED;
-
-                if (cameraPermission && readExternalFile) {
-                    mUploadHandler.openFileChooser(uploadMessage, accType, capt);
-                } else {
-                    new AlertDialog.Builder(this).setMessage("Se requiere permisos para ejecutar la acción").create().show();
-                }
-                break;
-            }
-
-        }
+    private boolean checkPermission(String permissionName) {
+        return ActivityCompat.checkSelfPermission(
+                this, permissionName) == PackageManager.PERMISSION_GRANTED;
     }
 }
